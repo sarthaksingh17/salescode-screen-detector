@@ -49,9 +49,11 @@ def predict(image_path: str) -> float:
         return 0.5
     with open(MODEL_PATH, "rb") as f:
         data = pickle.load(f)
-    prob = data["model"].predict_proba(
-        data["scaler"].transform(feats)
-    )[0, 1]
+    feats_scaled = data["scaler"].transform(feats)
+    # Support both old (no PCA) and new (with PCA) pipeline formats
+    if "pca" in data:
+        feats_scaled = data["pca"].transform(feats_scaled)
+    prob = data["model"].predict_proba(feats_scaled)[0, 1]
     return float(np.clip(prob, 0.0, 1.0))
 
 if __name__ == "__main__":

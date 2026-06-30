@@ -26,28 +26,69 @@ texture representations from millions of images, so it picks up on subtle
 patterns that survive the camera's post-processing — patterns I couldn't
 isolate manually with FFT or Laplacian math.
 
-With only 67 images and 1280 features per image, a complex model would overfit
-badly. Logistic Regression with L2 regularization keeps things simple and
-penalizes any single feature from dominating, which matters a lot when you
-have way more features than data points.
+Since 1280 features for just 67 images is a recipe for overfitting, a complex
+model would just memorize the noise. Logistic Regression with L2 regularization
+keeps things simple and stops any single feature from dominating. I also tossed
+in a PCA step to boil those 1280 features down to just the ones that explain 95%
+of the variance (usually around 50-60 components). This stops the model from
+finding a perfect but meaningless boundary just because it has so many dimensions
+to play with.
+
+### Why Classical CV Failed
+
+Looking back at why FFT, Laplacian, and the rest failed completely (near-total
+overlap between real and screen images), it makes total sense now. Modern phone
+cameras aggressively process images — HDR tone mapping, noise reduction,
+computational sharpening. All that processing wipes out the exact high-frequency
+screen artifacts (like pixel grids and moiré) that I was trying to detect. By the
+time I get the JPEG, the signal is just gone.
+
+I could have tried hunting for chromatic aberration or JPEG block artifacts instead,
+but those require strictly controlled lighting and angles that you just won't
+get in the real world. The deep feature approach side-steps this entirely by just
+learning whatever messy patterns actually survive the camera's processing pipeline.
+
+### Data Augmentation
+
+To help the model generalize better, I threw in some augmentations: flips, a bit
+of Gaussian blur, brightness tweaks, and a JPEG compression simulation. I added the
+JPEG one specifically because WhatsApp compression caused 2 of my 3 original
+misclassifications, so simulating it teaches the model to handle that kind of garbage
+data. I dropped geometric stuff like rotation since it didn't really matter for telling
+a screen from a real photo.
+
+But I had to be super careful with cross-validation here. I used a grouped split
+(`StratifiedGroupKFold`) so that all augmented versions of the same original photo
+always stay in the same fold. If I hadn't done that, augmented copies would leak
+across the train/test split, basically acting as near-duplicates and artificially
+inflating the accuracy to a fake 100%.
 
 ## Accuracy
 
-95.5% accuracy using Leave-One-Out Cross-Validation on 67 images (33 real, 34
-screen). With a dataset this small, a normal train/test split leaves you with
-a tiny, unstable test set — LOOCV tests every single image as its own held-out
-case and averages the result, which felt like the fairer way to evaluate.
+On the raw 67 images (without PCA), LOOCV accuracy was 95.5%. When I added PCA
+(53 components explaining 95% of the variance), it actually bumped up to 97.0% —
+the PCA step managed to strip out some noisy dimensions that were tripping up a
+borderline case.
 
-3 images got misclassified — one real photo with unusual lighting that
-apparently looked screen-like to the model, and two screen photos that had
-been compressed through WhatsApp before I used them, which seems to have
-degraded the texture signal enough to throw the model off.
+With the data augmentations added in (giving me over 400 samples) and evaluated
+cleanly with the grouped 10-fold CV to prevent leakage, the accuracy sits at a
+solid **94.3%**. The mistakes it makes all stem from the same 4 tricky original
+images (like the heavily WhatsApp-compressed ones). That actually proves the grouped
+CV is doing its job perfectly: when an image is hard, all its augmented variants
+end up being hard too.
 
-I could've just deleted those 3 and reported 100%, but that felt dishonest.
-95.5% on a dataset that includes some messy real-world cases is a more
-truthful number, and the WhatsApp compression issue is something I can
-actually explain and fix going forward — it's a data pipeline problem, not a
-model problem.
+I also set up a nested cross-validation loop to search for the best regularization
+strength (the C parameter) for each fold, just to make sure I wasn't artificially
+tuning it on the test data.
+
+### A Note on Training Confidence
+
+One weird thing I noticed: when tested on its own training data, the model is always
+100% confident (scoring ~0.05 for real, ~0.96 for screens). Turns out that's totally
+normal. With this many features and so few samples, logistic regression will almost
+always find a perfect separating hyperplane. It's not necessarily overfitting, it
+just means you can't trust the training accuracy — the held-out CV score is the
+only one that actually matters.
 
 ## Latency & Cost
 
@@ -66,13 +107,9 @@ auto-generated docs if this ever needed to grow past a couple of routes. For
 something this small either would've worked fine, but FastAPI felt like the
 better habit to build given where this could eventually go.
 
-## What I'd Improve With More Time
+demo - https://drive.google.com/file/d/1JRw4XHqkljt5Rsj2cNKm6QPRQEFcmP9B/view?usp=sharing
 
-For keeping accuracy high as people figure out how to game it, I'd want an
-ensemble approach — classical CV signals for the easy, obvious cases (fast and
-free), and MobileNet for the harder ones it can't catch. I'd also retrain
-periodically on new fraud examples as they get caught, since a static model
-will eventually fall behind whatever new tricks people try.
+## What I'd Improve With More Time
 
 For making it phone-ready, I'd export the MobileNet backbone to TFLite for
 Android or CoreML for iOS. MobileNetV2 is built for exactly this kind of
@@ -90,3 +127,23 @@ catching every fraud attempt or avoiding false flags on real users. I'd want
 to look at a precision-recall curve on a larger held-out set and pick
 something like 0.7-0.8 depending on how costly each type of mistake actually
 is in practice.
+
+### Generalization Caveat
+
+One big caveat though: all 67 training images came from just 1 or 2 devices (one
+phone for photos, laptop/phone screens for recaptures). I haven't validated it on
+a genuinely different phone or screen yet. I'd fully expect a 5-15% accuracy drop
+in the wild, simply because different phone sensors and screen technologies (like
+OLED vs LCD) look different to the model. To get a real sense of generalization,
+I'd need to test it on photos from at least 3-5 different phones looking at a few
+different screen types.
+
+### The Close-Up Face Issue
+
+Also, the live demo works great for normal objects but totally whiffs on close-up
+face shots — both real faces and faces-on-screen score pretty much identically.
+It's pretty obvious why in hindsight: the training data has zero faces in it, and
+skin texture looks completely different from the scenes the model actually learned
+from. To fix it, I wouldn't need to change the architecture, I'd just need to
+collect a batch of real selfies and screen-recaptured selfies and throw them into
+the training set.
