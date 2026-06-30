@@ -128,22 +128,3 @@ to look at a precision-recall curve on a larger held-out set and pick
 something like 0.7-0.8 depending on how costly each type of mistake actually
 is in practice.
 
-### Generalization Caveat
-
-One big caveat though: all 67 training images came from just 1 or 2 devices (one
-phone for photos, laptop/phone screens for recaptures). I haven't validated it on
-a genuinely different phone or screen yet. I'd fully expect a 5-15% accuracy drop
-in the wild, simply because different phone sensors and screen technologies (like
-OLED vs LCD) look different to the model. To get a real sense of generalization,
-I'd need to test it on photos from at least 3-5 different phones looking at a few
-different screen types.
-
-### The Close-Up Face Issue
-
-Also, the live demo works great for normal objects but totally whiffs on close-up
-face shots — both real faces and faces-on-screen score pretty much identically.
-It's pretty obvious why in hindsight: the training data has zero faces in it, and
-skin texture looks completely different from the scenes the model actually learned
-from. To fix it, I wouldn't need to change the architecture, I'd just need to
-collect a batch of real selfies and screen-recaptured selfies and throw them into
-the training set.
