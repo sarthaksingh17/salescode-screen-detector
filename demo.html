@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spot the Fake Photo — Live Demo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --border: #222222;
+    --text: #f0f0f0;
+    --muted: #666666;
+    --real: #00c896;
+    --screen: #ff4757;
+    --accent: #4dabf7;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+
+  header .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  header h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+
+  header h1 span {
+    color: var(--accent);
+  }
+
+  .container {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+    width: 100%;
+    max-width: 900px;
+  }
+
+  .camera-panel {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .camera-panel video {
+    width: 100%;
+    display: block;
+    aspect-ratio: 4/3;
+    object-fit: cover;
+    background: #000;
+  }
+
+  .camera-controls {
+    padding: 16px;
+    display: flex;
+    gap: 10px;
+  }
+
+  button {
+    flex: 1;
+    padding: 10px 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+    font-weight: 600;
+  }
+
+  button.primary:hover {
+    opacity: 0.85;
+    color: #000;
+  }
+
+  button:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .result-panel {
+    width: 280px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .score-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+    transition: border-color 0.3s;
+  }
+
+  .score-card.real { border-color: var(--real); }
+  .score-card.screen { border-color: var(--screen); }
+
+  .score-label {
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  .score-value {
+    font-size: 56px;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    margin-bottom: 8px;
+    transition: color 0.3s;
+  }
+
+  .score-value.real { color: var(--real); }
+  .score-value.screen { color: var(--screen); }
+  .score-value.neutral { color: var(--muted); }
+
+  .score-verdict {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .score-verdict.real { color: var(--real); }
+  .score-verdict.screen { color: var(--screen); }
+
+  .score-bar-wrap {
+    margin-top: 16px;
+    background: var(--border);
+    border-radius: 4px;
+    height: 4px;
+    overflow: hidden;
+  }
+
+  .score-bar {
+    height: 100%;
+    width: 0%;
+    border-radius: 4px;
+    transition: width 0.4s ease, background 0.3s;
+    background: var(--muted);
+  }
+
+  .score-bar.real { background: var(--real); }
+  .score-bar.screen { background: var(--screen); }
+
+  .info-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  .info-card .info-title {
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+
+  .info-row:last-child { border-bottom: none; }
+  .info-row .key { color: var(--muted); }
+  .info-row .val { color: var(--text); font-weight: 600; }
+
+  .status {
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+    padding: 8px;
+    letter-spacing: 0.05em;
+  }
+
+  .status.error { color: var(--screen); }
+
+  canvas { display: none; }
+
+  @media (max-width: 680px) {
+    .container { flex-direction: column; }
+    .result-panel { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">SalesCode AI — Take-Home Demo</div>
+  <h1>Spot the <span>Fake</span> Photo</h1>
+</header>
+
+<div class="container">
+  <div class="camera-panel">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+    <div class="camera-controls">
+      <button id="startBtn" class="primary" onclick="startCamera()">Start Camera</button>
+      <button id="snapBtn" onclick="snap()" disabled>Analyse Frame</button>
+      <button id="autoBtn" onclick="toggleAuto()" disabled>Auto (off)</button>
+    </div>
+    <div class="status" id="status">Click "Start Camera" to begin.</div>
+  </div>
+
+  <div class="result-panel">
+    <div class="score-card" id="scoreCard">
+      <div class="score-label">Fraud Score</div>
+      <div class="score-value neutral" id="scoreValue">—</div>
+      <div class="score-verdict" id="scoreVerdict">Waiting</div>
+      <div class="score-bar-wrap">
+        <div class="score-bar" id="scoreBar"></div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-title">Last Result</div>
+      <div class="info-row">
+        <span class="key">Raw score</span>
+        <span class="val" id="infoRaw">—</span>
+      </div>
+      <div class="info-row">
+        <span class="key">Confidence</span>
+        <span class="val" id="infoConf">—</span>
+      </div>
+      <div class="info-row">
+        <span class="key">Latency</span>
+        <span class="val" id="infoLatency">—</span>
+      </div>
+      <div class="info-row">
+        <span class="key">Model</span>
+        <span class="val">MobileNetV2</span>
+      </div>
+      <div class="info-row">
+        <span class="key">Threshold</span>
+        <span class="val">0.50</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let stream = null;
+  let autoInterval = null;
+  let autoRunning = false;
+
+  const video = document.getElementById("video");
+  const canvas = document.getElementById("canvas");
+  const ctx = canvas.getContext("2d");
+
+  async function startCamera() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+      video.srcObject = stream;
+      document.getElementById("startBtn").disabled = true;
+      document.getElementById("snapBtn").disabled = false;
+      document.getElementById("autoBtn").disabled = false;
+      setStatus("Camera ready. Point at a real object or a screen.");
+    } catch (e) {
+      setStatus("Camera error: " + e.message, true);
+    }
+  }
+
+  function snap() {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+    runPredict(dataUrl);
+  }
+
+  async function runPredict(dataUrl) {
+    const t0 = performance.now();
+    setStatus("Analysing...");
+    try {
+      const res = await fetch("/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: dataUrl })
+      });
+      const data = await res.json();
+      const latency = Math.round(performance.now() - t0);
+
+      if (data.error) {
+        setStatus("Error: " + data.error, true);
+        return;
+      }
+
+      updateResult(data, latency);
+      setStatus("Done — " + latency + "ms total (network + inference)");
+    } catch (e) {
+      setStatus("Request failed: " + e.message, true);
+    }
+  }
+
+  function updateResult(data, latency) {
+    const isScreen = data.label === "SCREEN";
+    const cls = isScreen ? "screen" : "real";
+    const pct = Math.round(data.score * 100);
+
+    document.getElementById("scoreCard").className = "score-card " + cls;
+    document.getElementById("scoreValue").className = "score-value " + cls;
+    document.getElementById("scoreValue").textContent = pct + "%";
+    document.getElementById("scoreVerdict").className = "score-verdict " + cls;
+    document.getElementById("scoreVerdict").textContent = isScreen ? "⚠ SCREEN DETECTED" : "✓ REAL PHOTO";
+    document.getElementById("scoreBar").className = "score-bar " + cls;
+    document.getElementById("scoreBar").style.width = pct + "%";
+
+    document.getElementById("infoRaw").textContent = data.score.toFixed(4);
+    document.getElementById("infoConf").textContent = data.confidence + "%";
+    document.getElementById("infoLatency").textContent = latency + " ms";
+  }
+
+  function toggleAuto() {
+    const btn = document.getElementById("autoBtn");
+    if (autoRunning) {
+      clearInterval(autoInterval);
+      autoRunning = false;
+      btn.textContent = "Auto (off)";
+    } else {
+      autoInterval = setInterval(snap, 1500);
+      autoRunning = true;
+      btn.textContent = "Auto (on)";
+    }
+  }
+
+  function setStatus(msg, isError = false) {
+    const el = document.getElementById("status");
+    el.textContent = msg;
+    el.className = "status" + (isError ? " error" : "");
+  }
+</script>
+</body>
+</html>
